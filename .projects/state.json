@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "providers": {
+    "clerk": {
+      "name": "Clerk"
+    }
+  },
+  "resources": {
+    "clerk-auth": {
+      "name": "clerk-auth",
+      "providerName": "Clerk",
+      "serviceId": "auth"
+    }
+  }
+}
