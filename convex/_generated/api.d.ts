@@ -8,7 +8,16 @@
  * @module
  */
 
-import type * as messages from "../messages.js";
+import type * as cart from "../cart.js";
+import type * as categories from "../categories.js";
+import type * as checkout from "../checkout.js";
+import type * as checkoutInternal from "../checkoutInternal.js";
+import type * as favourites from "../favourites.js";
+import type * as http from "../http.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as orders from "../orders.js";
+import type * as products from "../products.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +26,16 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  messages: typeof messages;
+  cart: typeof cart;
+  categories: typeof categories;
+  checkout: typeof checkout;
+  checkoutInternal: typeof checkoutInternal;
+  favourites: typeof favourites;
+  http: typeof http;
+  "lib/auth": typeof lib_auth;
+  orders: typeof orders;
+  products: typeof products;
+  users: typeof users;
 }>;
 
 /**
@@ -46,4 +64,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  stripe: import("@convex-dev/stripe/_generated/component.js").ComponentApi<"stripe">;
+};
