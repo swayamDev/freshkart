@@ -1,47 +1,31 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAdmin } from "./lib/auth";
 import { paginationOptsValidator } from "convex/server";
-
-const orderStatusValidator = v.union(
-  v.literal("pending"),
-  v.literal("confirmed"),
-  v.literal("processing"),
-  v.literal("dispatched"),
-  v.literal("delivered"),
-  v.literal("cancelled"),
-  v.literal("refunded")
-);
+import { requireAdmin } from "./lib/auth";
 
 export const getMyOrders = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const result = await ctx.db
+    if (!identity) return { page: [], isDone: true, continueCursor: "" };
+
+    const orderPage = await ctx.db
       .query("orders")
       .withIndex("by_user", (q) => q.eq("userId", identity.tokenIdentifier))
       .order("desc")
       .paginate(args.paginationOpts);
 
     const ordersWithItems = await Promise.all(
-      result.page.map(async (order) => {
+      orderPage.page.map(async (order) => {
         const items = await ctx.db
           .query("orderItems")
           .withIndex("by_order", (q) => q.eq("orderId", order._id))
-          .take(50);
-        const itemsWithImages = await Promise.all(
-          items.map(async (item) => ({
-            ...item,
-            imageUrl: item.productImageId
-              ? await ctx.storage.getUrl(item.productImageId)
-              : null,
-          }))
-        );
-        return { ...order, items: itemsWithImages };
+          .take(100);
+        return { ...order, items };
       })
     );
-    return { ...result, page: ordersWithItems };
+
+    return { ...orderPage, page: ordersWithItems };
   },
 });
 
@@ -49,25 +33,92 @@ export const getOrderById = query({
   args: { orderId: v.id("orders") },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
+    if (!identity) return null;
+
     const order = await ctx.db.get(args.orderId);
     if (!order) return null;
+
+    // Users can only see their own orders; admins can see all
     const me = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.tokenIdentifier))
       .unique();
+
     if (order.userId !== identity.tokenIdentifier && !me?.isAdmin) {
-      throw new Error("Forbidden");
+      return null;
     }
+
     const items = await ctx.db
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
-      .take(50);
+      .take(100);
+
     return { ...order, items };
   },
 });
 
-// Called by Stripe webhook after successful payment
+// Admin: paginated orders with optional status filter
+export const adminListOrders = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    let orderPage;
+    if (args.status) {
+      orderPage = await ctx.db
+        .query("orders")
+        .withIndex("by_status", (q) => q.eq("status", args.status as any))
+        .order("desc")
+        .paginate(args.paginationOpts);
+    } else {
+      orderPage = await ctx.db
+        .query("orders")
+        .order("desc")
+        .paginate(args.paginationOpts);
+    }
+
+    const ordersWithItems = await Promise.all(
+      orderPage.page.map(async (order) => {
+        const items = await ctx.db
+          .query("orderItems")
+          .withIndex("by_order", (q) => q.eq("orderId", order._id))
+          .take(100);
+        return { ...order, items };
+      })
+    );
+
+    return { ...orderPage, page: ordersWithItems };
+  },
+});
+
+// Admin: recent orders for dashboard (no pagination)
+export const adminRecentOrders = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    return await ctx.db.query("orders").order("desc").take(10);
+  },
+});
+
+export const adminUpdateStatus = mutation({
+  args: {
+    orderId: v.id("orders"),
+    status: v.string(),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    await ctx.db.patch(args.orderId, {
+      status: args.status as any,
+      ...(args.notes ? { notes: args.notes } : {}),
+    });
+  },
+});
+
+// Called internally from Stripe webhook
 export const createFromCheckout = internalMutation({
   args: {
     userId: v.string(),
@@ -96,7 +147,7 @@ export const createFromCheckout = internalMutation({
     total: v.number(),
   },
   handler: async (ctx, args) => {
-    // Idempotency check
+    // Idempotency: don't create duplicate orders for same Stripe session
     const existing = await ctx.db
       .query("orders")
       .withIndex("by_stripe_session", (q) =>
@@ -107,76 +158,48 @@ export const createFromCheckout = internalMutation({
 
     const orderId = await ctx.db.insert("orders", {
       userId: args.userId,
-      status: "confirmed",
-      total: args.total,
-      subtotal: args.subtotal,
-      deliveryFee: args.deliveryFee,
       stripeSessionId: args.stripeSessionId,
       stripePaymentIntentId: args.stripePaymentIntentId,
+      status: "confirmed",
       deliveryAddress: args.deliveryAddress,
+      subtotal: args.subtotal,
+      deliveryFee: args.deliveryFee,
+      total: args.total,
     });
 
+    // Insert order items
     await Promise.all(
       args.items.map((item) =>
-        ctx.db.insert("orderItems", { orderId, ...item })
+        ctx.db.insert("orderItems", {
+          orderId,
+          productId: item.productId,
+          productName: item.productName,
+          productImageId: item.productImageId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        })
       )
     );
 
-    // Clear the user's cart
+    // Deduct stock for each product
+    await Promise.all(
+      args.items.map(async (item) => {
+        const product = await ctx.db.get(item.productId);
+        if (product) {
+          const newStock = Math.max(0, product.stock - item.quantity);
+          await ctx.db.patch(item.productId, { stock: newStock });
+        }
+      })
+    );
+
+    // Clear user's server-side cart
     const cartItems = await ctx.db
       .query("cart")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .take(200);
-    await Promise.all(cartItems.map((item) => ctx.db.delete(item._id)));
-
-    // Release any stock reservations
-    const reservations = await ctx.db
-      .query("reservations")
-      .withIndex("by_session", (q) =>
-        q.eq("stripeSessionId", args.stripeSessionId)
-      )
-      .take(100);
-    await Promise.all(reservations.map((r) => ctx.db.delete(r._id)));
+    await Promise.all(cartItems.map((ci) => ctx.db.delete(ci._id)));
 
     return orderId;
-  },
-});
-
-// Admin: paginated — used by usePaginatedQuery on the orders page
-export const adminListOrders = query({
-  args: {
-    paginationOpts: paginationOptsValidator,
-    status: v.optional(orderStatusValidator),
-  },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-    if (args.status) {
-      return await ctx.db
-        .query("orders")
-        .withIndex("by_status", (q) => q.eq("status", args.status!))
-        .order("desc")
-        .paginate(args.paginationOpts);
-    }
-    return await ctx.db
-      .query("orders")
-      .order("desc")
-      .paginate(args.paginationOpts);
-  },
-});
-
-// Admin: recent orders for dashboard (plain useQuery — no pagination)
-export const adminRecentOrders = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-    return await ctx.db.query("orders").order("desc").take(10);
-  },
-});
-
-export const adminUpdateStatus = mutation({
-  args: { orderId: v.id("orders"), status: orderStatusValidator },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-    await ctx.db.patch(args.orderId, { status: args.status });
   },
 });

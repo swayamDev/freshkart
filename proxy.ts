@@ -22,7 +22,8 @@ export default clerkMiddleware(async (auth, req) => {
 
   if (isAdminRoute(req) && userId) {
     const isAdmin =
-      (sessionClaims?.publicMetadata as Record<string, unknown>)?.isAdmin === true;
+      (sessionClaims?.publicMetadata as Record<string, unknown>)?.isAdmin ===
+      true;
     if (!isAdmin) {
       return NextResponse.redirect(new URL("/", req.url));
     }
@@ -30,5 +31,8 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)", "/(api|trpc)(.*)"],
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
 };

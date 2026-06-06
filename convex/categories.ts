@@ -5,7 +5,17 @@ import { requireAdmin } from "./lib/auth";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("categories").order("asc").take(100);
+    const cats = await ctx.db
+      .query("categories")
+      .withIndex("by_sort_order")
+      .order("asc")
+      .take(100);
+    return await Promise.all(
+      cats.map(async (cat) => ({
+        ...cat,
+        imageUrl: cat.imageId ? await ctx.storage.getUrl(cat.imageId) : null,
+      }))
+    );
   },
 });
 
@@ -53,6 +63,16 @@ export const remove = mutation({
   args: { id: v.id("categories") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
+    // Check for products using this category
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_category", (q) => q.eq("categoryId", args.id))
+      .take(1);
+    if (products.length > 0) {
+      throw new Error(
+        "Cannot delete category with existing products. Move or delete products first."
+      );
+    }
     await ctx.db.delete(args.id);
   },
 });

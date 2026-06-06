@@ -14,11 +14,13 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { useUser } from "@clerk/nextjs";
 
 const DELIVERY_FEE = 399;
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const { user } = useUser();
   const profile = useQuery(api.users.getMyProfile);
   const cartItems = useCartStore((s) => s.items);
   const subtotal = useCartStore((s) => s.subtotal());
@@ -27,8 +29,9 @@ export default function CheckoutPage() {
   const createCheckout = useAction(api.checkout.createCheckoutSession);
 
   const hasAddress = !!profile?.address;
-  // Clerk Billing membership check via publicMetadata
-  const isMember = false; // Will be resolved server-side; shown UI only
+
+  // Read membership from Clerk publicMetadata (set by your backend/webhook)
+  const isMember = (user?.publicMetadata as Record<string, unknown>)?.plan === "member";
   const deliveryFee = isMember ? 0 : DELIVERY_FEE;
   const total = subtotal + deliveryFee;
 
@@ -83,7 +86,9 @@ export default function CheckoutPage() {
                 <div className="space-y-1 text-sm">
                   <p>{profile.address!.line1}</p>
                   {profile.address!.line2 && <p>{profile.address!.line2}</p>}
-                  <p>{profile.address!.city}, {profile.address!.state}</p>
+                  <p>
+                    {profile.address!.city}, {profile.address!.state}
+                  </p>
                   <p>{profile.address!.postcode}</p>
                   <p>{profile.address!.country}</p>
                   <Button
@@ -120,16 +125,28 @@ export default function CheckoutPage() {
                 <div key={item.productId} className="flex gap-3 items-center">
                   <div className="h-12 w-12 rounded-md bg-[hsl(var(--muted))] overflow-hidden flex-shrink-0">
                     {item.imageUrl ? (
-                      <Image src={item.imageUrl} alt={item.name} width={48} height={48} className="object-cover w-full h-full" />
+                      <Image
+                        src={item.imageUrl}
+                        alt={item.name}
+                        width={48}
+                        height={48}
+                        className="object-cover w-full h-full"
+                      />
                     ) : (
-                      <div className="h-full w-full flex items-center justify-center text-xl">🥦</div>
+                      <div className="h-full w-full flex items-center justify-center text-xl">
+                        🥦
+                      </div>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-xs text-[hsl(var(--muted-foreground))]">Qty: {item.quantity}</p>
+                    <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Qty: {item.quantity}
+                    </p>
                   </div>
-                  <p className="text-sm font-medium">{formatPrice(item.price * item.quantity)}</p>
+                  <p className="text-sm font-medium">
+                    {formatPrice(item.price * item.quantity)}
+                  </p>
                 </div>
               ))}
             </CardContent>
@@ -164,7 +181,16 @@ export default function CheckoutPage() {
                 <div className="bg-green-50 rounded-md p-3 text-xs text-green-700">
                   <Crown className="h-3 w-3 inline mr-1" />
                   Get free delivery with{" "}
-                  <a href="/membership" className="underline font-medium">FreshKart Membership</a>
+                  <a href="/membership" className="underline font-medium">
+                    FreshKart Membership
+                  </a>
+                </div>
+              )}
+
+              {isMember && (
+                <div className="bg-yellow-50 rounded-md p-3 text-xs text-yellow-700 flex items-center gap-2">
+                  <Crown className="h-3 w-3 flex-shrink-0" />
+                  Member benefit: Free delivery applied!
                 </div>
               )}
 

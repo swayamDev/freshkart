@@ -7,18 +7,45 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { Skeleton } from "@/components/ui/primitives";
 import { Input } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
-import { Search } from "lucide-react";
+import { useCallback, useState, useEffect, useRef } from "react";
+import { Search, X } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function ShopPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [search, setSearch] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<Id<"categories"> | undefined>();
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Support ?category=<id> from URL
+  const categoryParam = searchParams.get("category") as Id<"categories"> | null;
+  const [selectedCategoryId, setSelectedCategoryId] = useState<Id<"categories"> | undefined>(
+    categoryParam ?? undefined
+  );
+
+  // Sync category param from URL
+  useEffect(() => {
+    setSelectedCategoryId((categoryParam as Id<"categories">) ?? undefined);
+  }, [categoryParam]);
+
+  // Debounce search
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search]);
 
   const categories = useQuery(api.categories.list);
 
   const searchResults = useQuery(
     api.products.search,
-    search.trim().length > 1 ? { query: search } : "skip"
+    debouncedSearch.trim().length > 1 ? { query: debouncedSearch } : "skip"
   );
 
   const { results: browseResults, status, loadMore } = usePaginatedQuery(
@@ -27,9 +54,20 @@ export default function ShopPage() {
     { initialNumItems: 12 }
   );
 
-  const isSearching = search.trim().length > 1;
+  const isSearching = debouncedSearch.trim().length > 1;
   const products = isSearching ? searchResults : browseResults;
   const isLoading = !categories || (!isSearching && status === "LoadingFirstPage");
+
+  const selectCategory = useCallback((id: Id<"categories"> | undefined) => {
+    setSelectedCategoryId(id);
+    setSearch("");
+    setDebouncedSearch("");
+    if (id) {
+      router.push(`/shop?category=${id}`);
+    } else {
+      router.push("/shop");
+    }
+  }, [router]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -38,10 +76,18 @@ export default function ShopPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--muted-foreground))]" />
         <Input
           placeholder="Search for groceries..."
-          className="pl-10"
+          className="pl-10 pr-10"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+            onClick={() => { setSearch(""); setDebouncedSearch(""); }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Category filter */}
@@ -49,7 +95,7 @@ export default function ShopPage() {
         <Button
           variant={!selectedCategoryId ? "default" : "outline"}
           size="sm"
-          onClick={() => setSelectedCategoryId(undefined)}
+          onClick={() => selectCategory(undefined)}
         >
           All
         </Button>
@@ -58,7 +104,7 @@ export default function ShopPage() {
             key={cat._id}
             variant={selectedCategoryId === cat._id ? "default" : "outline"}
             size="sm"
-            onClick={() => setSelectedCategoryId(cat._id)}
+            onClick={() => selectCategory(cat._id)}
           >
             {cat.name}
           </Button>
@@ -80,6 +126,11 @@ export default function ShopPage() {
         <div className="text-center py-16 text-[hsl(var(--muted-foreground))]">
           <p className="text-lg">No products found</p>
           {search && <p className="text-sm mt-1">Try a different search term</p>}
+          {selectedCategoryId && (
+            <Button className="mt-4" variant="outline" onClick={() => selectCategory(undefined)}>
+              View all products
+            </Button>
+          )}
         </div>
       ) : (
         <>

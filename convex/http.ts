@@ -10,7 +10,6 @@ registerRoutes(http, components.stripe, {
   webhookPath: "/stripe/webhook",
   events: {
     "checkout.session.completed": async (ctx, event) => {
-      // Cast via unknown first to satisfy TS strict overlap check
       const session = event.data.object as unknown as {
         id: string;
         payment_intent?: string | null;
@@ -21,7 +20,7 @@ registerRoutes(http, components.stripe, {
       };
 
       const meta: Record<string, string> =
-        session.payment_intent_data?.metadata ??
+        (session as any).payment_intent_data?.metadata ??
         session.metadata ??
         {};
 
@@ -30,7 +29,7 @@ registerRoutes(http, components.stripe, {
       const addressMeta = meta.addressMeta;
 
       if (!userId || !cartSnapshot || !addressMeta) {
-        console.error("FreshKart: Missing metadata on checkout session", session.id);
+        // This may be a membership checkout — skip silently
         return;
       }
 
@@ -64,11 +63,10 @@ registerRoutes(http, components.stripe, {
             ? session.payment_intent
             : undefined,
         deliveryAddress: address,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items: items.map((i) => ({
           productId: i.productId as any,
           productName: i.productName,
-          productImageId: i.productImageId as any ?? undefined,
+          productImageId: (i.productImageId as any) ?? undefined,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
           totalPrice: i.totalPrice,
@@ -112,7 +110,9 @@ http.route({
 
     if (event.type === "user.created" || event.type === "user.updated") {
       const data = event.data;
-      const emailAddresses = data.email_addresses as Array<{ email_address: string }>;
+      const emailAddresses = data.email_addresses as Array<{
+        email_address: string;
+      }>;
       const primaryEmail = emailAddresses?.[0]?.email_address ?? "";
       await ctx.runMutation(internal.users.upsertUser, {
         clerkId: data.id as string,

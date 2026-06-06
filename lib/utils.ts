@@ -19,3 +19,10 @@ export function formatDate(timestamp: number): string {
     year: "numeric",
   }).format(new Date(timestamp));
 }
+
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}

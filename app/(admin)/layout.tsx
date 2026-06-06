@@ -1,14 +1,24 @@
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const user = await currentUser();
+  if (!user) redirect("/sign-in?redirect_url=/admin");
+
+  const isAdmin = user.publicMetadata?.isAdmin === true;
+  if (!isAdmin) redirect("/");
+
   return (
-    <div className="flex min-h-screen bg-[hsl(var(--background))]">
+    <div className="min-h-screen flex bg-[hsl(var(--muted))]">
       <AdminSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <main className="flex-1 overflow-auto p-6 lg:p-8">
-          {children}
-        </main>
-      </div>
+      <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <div className="max-w-5xl mx-auto">{children}</div>
+      </main>
     </div>
   );
 }

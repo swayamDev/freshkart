@@ -1,138 +1,90 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { SignInButton, Show, UserButton } from "@clerk/nextjs";
-
-import { ShoppingCart, Heart, Search, Leaf, Menu, X } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
 import { useCartStore } from "@/store/cart";
-import { Badge } from "@/components/ui/primitives";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { ShoppingCart, Heart, User, Leaf } from "lucide-react";
+import { useAuth, UserButton } from "@clerk/nextjs";
+import { CartDrawer } from "./CartDrawer";
 
 export function StoreNav() {
-  const itemCount = useCartStore((s) => s.itemCount());
+  const { isSignedIn } = useAuth();
+  const totalItems = useCartStore((s) => s.totalItems());
   const openCart = useCartStore((s) => s.openCart);
 
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  const pathname = usePathname();
-
-  const navLinks = [
-    { href: "/shop", label: "Shop" },
-    { href: "/shop?category=fruit-veg", label: "Fruit & Veg" },
-    { href: "/shop?category=dairy", label: "Dairy" },
-    { href: "/shop?category=bakery", label: "Bakery" },
-    { href: "/membership", label: "Membership" },
-  ];
-
   return (
-    <header className="sticky top-0 z-40 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--background))]/60">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        {/* Logo */}
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-xl font-bold text-[hsl(var(--primary))]"
-        >
-          <Leaf className="h-6 w-6" />
-          FreshKart
-        </Link>
-
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-6 text-sm md:flex">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                "transition-colors hover:text-[hsl(var(--foreground))]",
-                pathname === link.href
-                  ? "font-medium text-[hsl(var(--foreground))]"
-                  : "text-[hsl(var(--muted-foreground))]",
-              )}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <Link href="/shop">
-            <Button variant="ghost" size="icon" aria-label="Search">
-              <Search className="h-5 w-5" />
-            </Button>
+    <>
+      <header className="sticky top-0 z-40 border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--background))]/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
+          {/* Logo */}
+          <Link
+            href="/"
+            className="flex items-center gap-2 font-bold text-[hsl(var(--primary))] shrink-0"
+          >
+            <Leaf className="h-5 w-5" />
+            FreshKart
           </Link>
 
-          <Show when="signed-in">
-            <Link href="/favourites">
-              <Button variant="ghost" size="icon" aria-label="Favourites">
-                <Heart className="h-5 w-5" />
-              </Button>
+          {/* Nav links */}
+          <nav className="hidden sm:flex items-center gap-1">
+            <Link
+              href="/shop"
+              className="px-3 py-1.5 text-sm rounded-md hover:bg-[hsl(var(--muted))] transition-colors"
+            >
+              Shop
             </Link>
-          </Show>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            onClick={openCart}
-            aria-label="Open cart"
-          >
-            <ShoppingCart className="h-5 w-5" />
-
-            {itemCount > 0 && (
-              <Badge className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center p-0 text-xs">
-                {itemCount > 99 ? "99+" : itemCount}
-              </Badge>
-            )}
-          </Button>
-
-          <Show when="signed-in">
-            <UserButton />
-          </Show>
-
-          <Show when="signed-out">
-            <SignInButton mode="modal" fallbackRedirectUrl="/">
-              <Button size="sm">Sign in</Button>
-            </SignInButton>
-          </Show>
-
-          {/* Mobile menu toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? (
-              <X className="h-5 w-5" />
-            ) : (
-              <Menu className="h-5 w-5" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Mobile nav */}
-      {mobileOpen && (
-        <div className="border-t border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-4 md:hidden">
-          <nav className="flex flex-col gap-3 text-sm">
-            {navLinks.map((link) => (
+            <Link
+              href="/membership"
+              className="px-3 py-1.5 text-sm rounded-md hover:bg-[hsl(var(--muted))] transition-colors"
+            >
+              Membership
+            </Link>
+            {isSignedIn && (
               <Link
-                key={link.href}
-                href={link.href}
-                className="py-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                onClick={() => setMobileOpen(false)}
+                href="/orders"
+                className="px-3 py-1.5 text-sm rounded-md hover:bg-[hsl(var(--muted))] transition-colors"
               >
-                {link.label}
+                Orders
               </Link>
-            ))}
+            )}
           </nav>
+
+          {/* Right */}
+          <div className="flex items-center gap-1">
+            {isSignedIn && (
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/favourites">
+                  <Heart className="h-5 w-5" />
+                </Link>
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              onClick={openCart}
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {totalItems > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-[hsl(var(--primary))] text-white text-[10px] font-bold flex items-center justify-center">
+                  {totalItems > 9 ? "9+" : totalItems}
+                </span>
+              )}
+            </Button>
+
+            {isSignedIn ? (
+              <UserButton afterSignOutUrl="/" />
+            ) : (
+              <Button size="sm" asChild>
+                <Link href="/sign-in">Sign in</Link>
+              </Button>
+            )}
+          </div>
         </div>
-      )}
-    </header>
+      </header>
+
+      <CartDrawer />
+    </>
   );
 }

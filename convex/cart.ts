@@ -19,25 +19,30 @@ export const getMyCart = query({
           : null;
         return { ...item, product: { ...product, imageUrl } };
       })
-    ).then((items) => items.filter(Boolean));
+    ).then((r) => r.filter(Boolean));
   },
 });
 
-export const addToCart = mutation({
+export const upsertItem = mutation({
   args: { productId: v.id("products"), quantity: v.number() },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
+
     const existing = await ctx.db
       .query("cart")
       .withIndex("by_user_and_product", (q) =>
         q.eq("userId", identity.tokenIdentifier).eq("productId", args.productId)
       )
       .unique();
+
+    if (args.quantity <= 0) {
+      if (existing) await ctx.db.delete(existing._id);
+      return;
+    }
+
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        quantity: existing.quantity + args.quantity,
-      });
+      await ctx.db.patch(existing._id, { quantity: args.quantity });
     } else {
       await ctx.db.insert("cart", {
         userId: identity.tokenIdentifier,
@@ -48,31 +53,18 @@ export const addToCart = mutation({
   },
 });
 
-export const updateQuantity = mutation({
-  args: { cartItemId: v.id("cart"), quantity: v.number() },
+export const removeItem = mutation({
+  args: { productId: v.id("products") },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
-    const item = await ctx.db.get(args.cartItemId);
-    if (!item || item.userId !== identity.tokenIdentifier)
-      throw new Error("Not found");
-    if (args.quantity <= 0) {
-      await ctx.db.delete(args.cartItemId);
-    } else {
-      await ctx.db.patch(args.cartItemId, { quantity: args.quantity });
-    }
-  },
-});
-
-export const removeFromCart = mutation({
-  args: { cartItemId: v.id("cart") },
-  handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated");
-    const item = await ctx.db.get(args.cartItemId);
-    if (!item || item.userId !== identity.tokenIdentifier)
-      throw new Error("Not found");
-    await ctx.db.delete(args.cartItemId);
+    const existing = await ctx.db
+      .query("cart")
+      .withIndex("by_user_and_product", (q) =>
+        q.eq("userId", identity.tokenIdentifier).eq("productId", args.productId)
+      )
+      .unique();
+    if (existing) await ctx.db.delete(existing._id);
   },
 });
 
@@ -85,10 +77,11 @@ export const clearCart = mutation({
       .query("cart")
       .withIndex("by_user", (q) => q.eq("userId", identity.tokenIdentifier))
       .take(200);
-    await Promise.all(items.map((item) => ctx.db.delete(item._id)));
+    await Promise.all(items.map((i) => ctx.db.delete(i._id)));
   },
 });
 
+// Called from CartDrawer when user signs in — merges local cart into DB
 export const mergeGuestCart = mutation({
   args: {
     items: v.array(
@@ -98,24 +91,26 @@ export const mergeGuestCart = mutation({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
-    for (const item of args.items) {
+
+    for (const incoming of args.items) {
       const existing = await ctx.db
         .query("cart")
         .withIndex("by_user_and_product", (q) =>
           q
             .eq("userId", identity.tokenIdentifier)
-            .eq("productId", item.productId)
+            .eq("productId", incoming.productId)
         )
         .unique();
+
       if (existing) {
         await ctx.db.patch(existing._id, {
-          quantity: Math.max(existing.quantity, item.quantity),
+          quantity: existing.quantity + incoming.quantity,
         });
       } else {
         await ctx.db.insert("cart", {
           userId: identity.tokenIdentifier,
-          productId: item.productId,
-          quantity: item.quantity,
+          productId: incoming.productId,
+          quantity: incoming.quantity,
         });
       }
     }

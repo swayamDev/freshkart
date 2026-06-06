@@ -1,12 +1,10 @@
-if (!process.env.CLERK_FRONTEND_API_URL) {
-  throw new Error("CLERK_FRONTEND_API_URL environment variable is not set");
-}
+import { AuthConfig } from "convex/server";
 
 export default {
   providers: [
     {
-      domain: process.env.CLERK_FRONTEND_API_URL,
+      domain: process.env.CLERK_JWT_ISSUER_DOMAIN!,
       applicationID: "convex",
     },
   ],
-};
+} satisfies AuthConfig;

@@ -107,6 +107,47 @@ export const search = query({
   },
 });
 
+// Related products in same category (excluding current product)
+export const getRelated = query({
+  args: { categoryId: v.id("categories"), excludeId: v.id("products"), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_category_and_active", (q) =>
+        q.eq("categoryId", args.categoryId).eq("isActive", true)
+      )
+      .take(20);
+    const filtered = products
+      .filter((p) => p._id !== args.excludeId)
+      .slice(0, args.limit ?? 4);
+    return await Promise.all(
+      filtered.map(async (p) => ({
+        ...p,
+        imageUrl: p.imageId ? await ctx.storage.getUrl(p.imageId) : null,
+      }))
+    );
+  },
+});
+
+// Admin: count of active products
+export const countActive = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return 0;
+    const me = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.tokenIdentifier))
+      .unique();
+    if (!me?.isAdmin) return 0;
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_active", (q) => q.eq("isActive", true))
+      .take(10000);
+    return products.length;
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),

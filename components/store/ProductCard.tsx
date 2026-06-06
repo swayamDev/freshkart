@@ -1,18 +1,14 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { Heart, Plus, ShoppingCart } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/primitives";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { formatPrice } from "@/lib/utils";
+import { ShoppingCart, Plus } from "lucide-react";
 import { useCartStore } from "@/store/cart";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { toast } from "sonner";
-import { useAuth } from "@clerk/nextjs";
 
 interface ProductCardProps {
   id: Id<"products">;
@@ -23,95 +19,94 @@ interface ProductCardProps {
   slug: string;
   stock: number;
   unit?: string;
-  categoryName?: string;
 }
 
 export function ProductCard({
-  id, name, price, compareAtPrice, imageUrl, slug, stock, unit, categoryName,
+  id,
+  name,
+  price,
+  compareAtPrice,
+  imageUrl,
+  slug,
+  stock,
+  unit,
 }: ProductCardProps) {
-  const { isSignedIn } = useAuth();
   const addItem = useCartStore((s) => s.addItem);
   const openCart = useCartStore((s) => s.openCart);
-  const toggleFav = useMutation(api.favourites.toggle);
-  const isFav = useQuery(api.favourites.isFavourited, isSignedIn ? { productId: id } : "skip");
+  const outOfStock = stock <= 0;
 
-  const handleAddToCart = (e: React.MouseEvent) => {
+  const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     addItem({ productId: id, name, price, imageUrl, stock, unit });
     openCart();
     toast.success(`${name} added to cart`);
   };
 
-  const handleToggleFav = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!isSignedIn) { toast.error("Sign in to save favourites"); return; }
-    await toggleFav({ productId: id });
-  };
-
-  const outOfStock = stock <= 0;
-  const discount = compareAtPrice && compareAtPrice > price
-    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
-    : null;
-
   return (
-    <Link href={`/products/${slug}`}>
-      <Card className="group overflow-hidden h-full hover:shadow-md transition-shadow cursor-pointer">
-        <div className="relative aspect-square overflow-hidden bg-[hsl(var(--muted))]">
+    <Link href={`/products/${slug}`} className="group block">
+      <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] overflow-hidden hover:shadow-md transition-shadow">
+        {/* Image */}
+        <div className="relative aspect-square bg-[hsl(var(--muted))]">
           {imageUrl ? (
-            <Image src={imageUrl} alt={name} fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+            <Image
+              src={imageUrl}
+              alt={name}
+              fill
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
+            />
           ) : (
-            <div className="h-full w-full flex items-center justify-center text-4xl">🥦</div>
+            <div className="h-full w-full flex items-center justify-center text-5xl">
+              🥦
+            </div>
           )}
-          {discount && (
-            <Badge className="absolute top-2 left-2 bg-[hsl(var(--destructive))]">-{discount}%</Badge>
+          {compareAtPrice && compareAtPrice > price && (
+            <div className="absolute top-2 left-2">
+              <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0.5">
+                Sale
+              </Badge>
+            </div>
           )}
           {outOfStock && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <Badge variant="secondary">Out of stock</Badge>
+              <span className="text-white text-xs font-medium bg-black/60 px-2 py-1 rounded">
+                Out of stock
+              </span>
             </div>
           )}
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute top-2 right-2 bg-white/80 hover:bg-white h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={handleToggleFav}
-          >
-            <Heart className={`h-4 w-4 ${isFav ? "fill-red-500 text-red-500" : ""}`} />
-          </Button>
         </div>
 
-        <CardContent className="p-3">
-          {categoryName && (
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-1">{categoryName}</p>
-          )}
-          <p className="text-sm font-medium line-clamp-2 leading-tight">{name}</p>
-          {unit && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">{unit}</p>}
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className="font-semibold text-[hsl(var(--primary))]">{formatPrice(price)}</span>
-            {compareAtPrice && compareAtPrice > price && (
-              <span className="text-xs text-[hsl(var(--muted-foreground))] line-through">{formatPrice(compareAtPrice)}</span>
+        {/* Details */}
+        <div className="p-3 space-y-2">
+          <p className="text-sm font-medium leading-tight line-clamp-2">{name}</p>
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="text-sm font-bold text-[hsl(var(--primary))]">
+                {formatPrice(price)}
+              </span>
+              {unit && (
+                <span className="text-xs text-[hsl(var(--muted-foreground))] ml-1">
+                  / {unit}
+                </span>
+              )}
+              {compareAtPrice && compareAtPrice > price && (
+                <span className="text-xs text-[hsl(var(--muted-foreground))] line-through ml-1">
+                  {formatPrice(compareAtPrice)}
+                </span>
+              )}
+            </div>
+            {!outOfStock && (
+              <Button
+                size="icon"
+                className="h-7 w-7 flex-shrink-0 rounded-full"
+                onClick={handleAdd}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
-        </CardContent>
-
-        <CardFooter className="p-3 pt-0">
-          <Button
-            size="sm"
-            className="w-full h-8"
-            onClick={handleAddToCart}
-            disabled={outOfStock}
-          >
-            {outOfStock ? (
-              "Out of Stock"
-            ) : (
-              <>
-                <Plus className="h-3 w-3 mr-1" />
-                Add to Cart
-              </>
-            )}
-          </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     </Link>
   );
 }
