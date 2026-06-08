@@ -10,7 +10,7 @@ export const getMyProfile = query({
     return await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) =>
-        q.eq("clerkId", identity.tokenIdentifier)
+        q.eq("clerkId", identity.tokenIdentifier),
       )
       .unique();
   },
@@ -60,7 +60,7 @@ export const saveAddress = mutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) =>
-        q.eq("clerkId", identity.tokenIdentifier)
+        q.eq("clerkId", identity.tokenIdentifier),
       )
       .unique();
     if (!user) throw new Error("User not found");
@@ -83,13 +83,8 @@ export const listUsers = query({
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
-    const me = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) =>
-        q.eq("clerkId", identity.tokenIdentifier)
-      )
-      .unique();
-    if (!me?.isAdmin) throw new Error("Forbidden");
+    const meta = identity.publicMetadata as Record<string, unknown> | undefined;
+    if (meta?.isAdmin !== true) throw new Error("Forbidden");
     return await ctx.db.query("users").paginate(args.paginationOpts);
   },
 });
@@ -100,13 +95,8 @@ export const countUsers = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return 0;
-    const me = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) =>
-        q.eq("clerkId", identity.tokenIdentifier)
-      )
-      .unique();
-    if (!me?.isAdmin) return 0;
+    const meta = identity.publicMetadata as Record<string, unknown> | undefined;
+    if (meta?.isAdmin !== true) return 0;
     const users = await ctx.db.query("users").take(10000);
     return users.length;
   },

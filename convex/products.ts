@@ -17,7 +17,7 @@ export const list = query({
       rawPage = await ctx.db
         .query("products")
         .withIndex("by_category_and_active", (q) =>
-          q.eq("categoryId", args.categoryId!).eq("isActive", activeOnly)
+          q.eq("categoryId", args.categoryId!).eq("isActive", activeOnly),
         )
         .order("desc")
         .paginate(args.paginationOpts);
@@ -38,7 +38,7 @@ export const list = query({
       rawPage.page.map(async (p) => ({
         ...p,
         imageUrl: p.imageId ? await ctx.storage.getUrl(p.imageId) : null,
-      }))
+      })),
     );
     return { ...rawPage, page: pageWithImages };
   },
@@ -55,7 +55,7 @@ export const getFeatured = query({
       products.map(async (p) => ({
         ...p,
         imageUrl: p.imageId ? await ctx.storage.getUrl(p.imageId) : null,
-      }))
+      })),
     );
   },
 });
@@ -95,26 +95,30 @@ export const search = query({
     const results = await ctx.db
       .query("products")
       .withSearchIndex("search_products", (q) =>
-        q.search("name", args.query).eq("isActive", true)
+        q.search("name", args.query).eq("isActive", true),
       )
       .take(args.limit ?? 10);
     return await Promise.all(
       results.map(async (p) => ({
         ...p,
         imageUrl: p.imageId ? await ctx.storage.getUrl(p.imageId) : null,
-      }))
+      })),
     );
   },
 });
 
 // Related products in same category (excluding current product)
 export const getRelated = query({
-  args: { categoryId: v.id("categories"), excludeId: v.id("products"), limit: v.optional(v.number()) },
+  args: {
+    categoryId: v.id("categories"),
+    excludeId: v.id("products"),
+    limit: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const products = await ctx.db
       .query("products")
       .withIndex("by_category_and_active", (q) =>
-        q.eq("categoryId", args.categoryId).eq("isActive", true)
+        q.eq("categoryId", args.categoryId).eq("isActive", true),
       )
       .take(20);
     const filtered = products
@@ -124,7 +128,7 @@ export const getRelated = query({
       filtered.map(async (p) => ({
         ...p,
         imageUrl: p.imageId ? await ctx.storage.getUrl(p.imageId) : null,
-      }))
+      })),
     );
   },
 });
@@ -135,11 +139,8 @@ export const countActive = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return 0;
-    const me = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.tokenIdentifier))
-      .unique();
-    if (!me?.isAdmin) return 0;
+    const meta = identity.publicMetadata as Record<string, unknown> | undefined;
+    if (meta?.isAdmin !== true) return 0;
     const products = await ctx.db
       .query("products")
       .withIndex("by_active", (q) => q.eq("isActive", true))
